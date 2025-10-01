@@ -1,10 +1,10 @@
+// /api/answer-feedback.js
 export const config = { runtime: "nodejs" };
 
 function parseJSON(req) {
   return new Promise((resolve) => {
-    let data = "";
-    req.on("data", (c) => (data += c));
-    req.on("end", () => { try { resolve(JSON.parse(data || "{}")); } catch { resolve({}); } });
+    let data = ""; req.on("data", c => data+=c);
+    req.on("end", () => { try { resolve(JSON.parse(data||"{}")); } catch { resolve({}); } });
   });
 }
 
@@ -30,9 +30,7 @@ export default async function handler(req, res) {
     const ref = String(body.explanation || "");
 
     const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return res.status(200).json({ text: localFeedback({ correct, question, chosen, ref, confidence }), source: "local" });
-    }
+    if (!apiKey) return res.status(200).json({ text: localFeedback({ correct, question, chosen, ref, confidence }), source:"local" });
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
     const system = "Supportive cybersecurity tutor. Keep to 3–5 sentences. No operational hacking details.";
@@ -51,17 +49,17 @@ Give brief feedback and one safe tip.`;
       generationConfig: { temperature: 0.35, maxOutputTokens: 180 }
     };
 
-    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const r = await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(payload) });
     const raw = await r.text();
 
     if (!r.ok) {
-      return res.status(200).json({ text: localFeedback({ correct, question, chosen, ref, confidence }), source: `local-fallback-${r.status}` });
+      return res.status(200).json({ text: localFeedback({ correct, question, chosen, ref, confidence }), source:`local-fallback-${r.status}` });
     }
 
     let j; try { j = JSON.parse(raw); } catch { j = {}; }
     const textOut = j?.candidates?.[0]?.content?.parts?.[0]?.text || null;
-    return res.status(200).json({ text: textOut || localFeedback({ correct, question, chosen, ref, confidence }), source: "gemini" });
-  } catch (e) {
-    return res.status(200).json({ text: localFeedback({ correct: false, question: "", chosen: "", ref: "", confidence: 3 }), source: "local-error" });
+    return res.status(200).json({ text: textOut || localFeedback({ correct, question, chosen, ref, confidence }), source:"gemini" });
+  } catch {
+    return res.status(200).json({ text: localFeedback({ correct:false, question:"", chosen:"", ref:"", confidence:3 }), source:"local-error" });
   }
 }
