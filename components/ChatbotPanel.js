@@ -7,28 +7,34 @@ export function mountChatbot(el) {
       </div>
     `;
   }
+
   let chat = [];
   render(chat);
 
   window.addEventListener("ask-ai", async (e) => {
-    const term = (e.detail.term || "").trim();
-    if (!term) return;
-    chat.push({ role: "user", text: `What is "${term}"?` });
+    const query = (e.detail.query || e.detail.term || "").trim();
+    const context = (e.detail.context || "").trim();
+    if (!query) return;
+
+    chat.push({ role: "user", text: query });
     render(chat);
 
     try {
-      const key = `def:${term.toLowerCase()}`;
+      const key = `learn:${query.toLowerCase()}`;
       const cached = localStorage.getItem(key);
       if (cached) { chat.push({ role: "ai", text: cached }); return render(chat); }
 
-      const r = await fetch("/api/ask-definition", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ term })
+      const r = await fetch("/api/learn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, context })
       });
+
       const raw = await r.text();
       let j; try { j = JSON.parse(raw); } catch { j = { text: raw }; }
-      const msg = j.text || j.error || j.details || "I couldn't find a safe definition.";
+      const msg = j.text || j.error || j.details || "I couldn't find a safe explanation.";
       if (j.text) localStorage.setItem(key, j.text);
+
       chat.push({ role: "ai", text: msg });
       render(chat);
     } catch (err) {
@@ -37,5 +43,6 @@ export function mountChatbot(el) {
     }
   });
 
-  return { appendAI(text){ chat.push({role:"ai", text}); render(chat); } };
+  // No mirroring of answer feedback into this panel
+  return { appendAI(){ /* no-op */ } };
 }
