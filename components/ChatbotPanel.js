@@ -37,7 +37,7 @@ export function mountChatbot(el) {
       body: JSON.stringify({ query, context: ctx })
     });
 
-    // Non-stream fallback if streaming not available
+    // If streaming unavailable, try non-streaming endpoint
     if (!resp.ok || !resp.body) {
       const r = await fetch("/api/learn", {
         method: "POST",
@@ -60,24 +60,25 @@ export function mountChatbot(el) {
       if (done) break;
       partial += decoder.decode(value, { stream: true });
 
-      // Parse streamed JSON events (Gemini returns JSON per chunk)
+      // Our server sends SSE lines:  data: {"text":"..."}
       const lines = partial.split("\n");
-      partial = lines.pop(); // keep last partial line
-      let appended = false;
+      partial = lines.pop(); // keep last partial for next round
 
+      let appended = false;
       for (const line of lines) {
-        if (!line.startsWith("data:")) continue;
-        const payload = line.slice(5).trim();
+        const t = line.trim();
+        if (!t.startsWith("data:")) continue;
+        const payload = t.slice(5).trim();
         if (!payload) continue;
         try {
-          const j = JSON.parse(payload);
-          const piece = j?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+          const obj = JSON.parse(payload);
+          const piece = obj.text || "";
           if (piece) {
             const last = chat[chat.length - 1];
             last.text += piece;
             appended = true;
           }
-        } catch { /* ignore keep-alives */ }
+        } catch {/* ignore keep-alives */}
       }
       if (appended) ui(chat);
     }
