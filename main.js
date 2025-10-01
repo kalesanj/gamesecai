@@ -15,7 +15,7 @@ const quiz = mountQuiz(quizEl, {
       <p style="margin:0 0 12px 0;">${feedback}</p>
       <button id="next" class="ghost">${next ? "Next Question" : "See Results"}</button>
     `;
-    chatbot.appendAI(feedback);
+    // Note: No chatbot.appendAI(feedback) here anymore
     document.getElementById("next").onclick = () => {
       resultsEl.hidden = true;
       quiz.next();
