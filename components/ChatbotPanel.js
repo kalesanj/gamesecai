@@ -1,4 +1,3 @@
-// /components/ChatbotPanel.js
 export function mountChatbot(el) {
   function ui(lines = []) {
     el.innerHTML = `
@@ -32,25 +31,59 @@ export function mountChatbot(el) {
     ui(chat);
 
     const ctx = window.__currentQuizQuestion || "";
+    const resp = await fetch("/api/learn-stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, context: ctx })
+    });
 
-    try {
+    // Non-stream fallback if streaming not available
+    if (!resp.ok || !resp.body) {
       const r = await fetch("/api/learn", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type":"application/json" },
         body: JSON.stringify({ query, context: ctx })
       });
-      const raw = await r.text();
-      let j; try { j = JSON.parse(raw); } catch { j = { text: raw }; }
-      const msg = j.text || j.error || j.details || "I couldn't find a safe explanation.";
-      chat.push({ role: "ai", text: msg, source: j.source || (j.error ? "error" : "unknown") });
-      ui(chat);
-    } catch (e) {
-      chat.push({ role: "ai", text: "Network error. Please try again.", source: "network" });
-      ui(chat);
+      const raw = await r.text(); let j; try{ j=JSON.parse(raw);}catch{ j={ error: raw }; }
+      chat.push({ role:"ai", text: j.text || j.error || "Gemini error", source: "gemini" });
+      return ui(chat);
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    chat.push({ role: "ai", text: "", source: "gemini" });
+    ui(chat);
+
+    let partial = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      partial += decoder.decode(value, { stream: true });
+
+      // Parse streamed JSON events (Gemini returns JSON per chunk)
+      const lines = partial.split("\n");
+      partial = lines.pop(); // keep last partial line
+      let appended = false;
+
+      for (const line of lines) {
+        if (!line.startsWith("data:")) continue;
+        const payload = line.slice(5).trim();
+        if (!payload) continue;
+        try {
+          const j = JSON.parse(payload);
+          const piece = j?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+          if (piece) {
+            const last = chat[chat.length - 1];
+            last.text += piece;
+            appended = true;
+          }
+        } catch { /* ignore keep-alives */ }
+      }
+      if (appended) ui(chat);
     }
   }
 
-  // Also listen for one-click “Ask AI” from the quiz
+  // Support the quiz's "Ask AI" button
   window.addEventListener("ask-ai", (e) => {
     const q = (e.detail?.query || e.detail?.term || "").trim();
     if (!q) return;
@@ -58,5 +91,5 @@ export function mountChatbot(el) {
     submitAsk();
   });
 
-  return { appendAI(){ /* no-op: we keep quiz feedback separate */ } };
+  return { appendAI(){ /* no-op */ } };
 }
