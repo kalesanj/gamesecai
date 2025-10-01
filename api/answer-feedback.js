@@ -6,6 +6,7 @@ function parseJSON(req) {
     req.on("end", () => { try { resolve(JSON.parse(data||"{}")); } catch { resolve({}); } });
   });
 }
+
 function localFeedback({ correct, question, chosen, ref, confidence }) {
   const intro = correct
     ? "✅ Correct. Nice work—your choice aligns with standard best practice."
@@ -17,29 +18,29 @@ function localFeedback({ correct, question, chosen, ref, confidence }) {
   return `${intro}${explain}${tip}`;
 }
 
-// Concrete-model Gemini caller shared here too
-async function callGemini(apiKey, prompt, genCfg={}) {
-  const models = ["gemini-1.5-flash", "gemini-1.5-flash-001", "gemini-pro"];
-  const base = "https://generativelanguage.googleapis.com/v1beta/models";
+// Version-flexible Gemini caller (shared)
+async function callGemini(apiKey, prompt, genCfg = {}) {
+  const versions = ["v1", "v1beta"];
+  const models = ["gemini-1.5-flash", "gemini-1.5-flash-001", "gemini-1.5-pro", "gemini-1.0-pro"];
   const payload = {
     contents: [{ role: "user", parts: [{ text: prompt }]}],
-    generationConfig: { temperature: 0.35, maxOutputTokens: 180, ...genCfg }
+    generationConfig: { temperature: 0.35, maxOutputTokens: 180, ...genCfg },
   };
-
   let lastErr = null;
-  for (const m of models) {
-    const url = `${base}/${m}:generateContent?key=${apiKey}`;
-    const r = await fetch(url, {
-      method: "POST", headers: { "Content-Type":"application/json" },
-      body: JSON.stringify(payload)
-    });
-    const raw = await r.text();
-    if (r.ok) {
-      let j; try { j = JSON.parse(raw); } catch { j = {}; }
-      const text = j?.candidates?.[0]?.content?.parts?.[0]?.text || null;
-      if (text) return { text, model: m };
-    } else {
-      lastErr = { status: r.status, details: raw.slice(0,200), model: m };
+
+  for (const ver of versions) {
+    for (const m of models) {
+      const url = `https://generativelanguage.googleapis.com/${ver}/models/${m}:generateContent?key=${apiKey}`;
+      const r = await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(payload) });
+      const raw = await r.text();
+
+      if (r.ok) {
+        let j; try { j = JSON.parse(raw); } catch { j = {}; }
+        const text = j?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+        if (text) return { text, model: m, version: ver };
+      } else {
+        lastErr = { status: r.status, details: raw.slice(0,200), model: m, version: ver };
+      }
     }
   }
   return { error: "Gemini request failed", ...lastErr };
@@ -69,8 +70,8 @@ Reference (safe): ${ref}
 Give brief feedback and one safe tip.`;
 
       const g = await callGemini(apiKey, prompt);
-      if (g.text) return res.status(200).json({ text: g.text, source: `gemini:${g.model}` });
-      // else fall through to local feedback
+      if (g.text) return res.status(200).json({ text: g.text, source: `gemini:${g.model}@${g.version}` });
+      // If Gemini failed, continue to local fallback
     }
 
     return res.status(200).json({ text: localFeedback({ correct, question, chosen, ref, confidence }), source:"local" });
