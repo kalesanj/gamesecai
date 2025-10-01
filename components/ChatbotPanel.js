@@ -31,7 +31,6 @@ export function mountChatbot(el) {
     chat.push({ role: "user", text: query });
     ui(chat);
 
-    // optional context: current quiz question (if app sets it)
     const ctx = window.__currentQuizQuestion || "";
 
     try {
@@ -51,7 +50,7 @@ export function mountChatbot(el) {
     }
   }
 
-  // Also listen for “Ask AI” from the quiz (pre-fills input then asks)
+  // Also listen for one-click “Ask AI” from the quiz
   window.addEventListener("ask-ai", (e) => {
     const q = (e.detail?.query || e.detail?.term || "").trim();
     if (!q) return;
@@ -59,5 +58,5 @@ export function mountChatbot(el) {
     submitAsk();
   });
 
-  return { appendAI(){ /* no-op: quiz feedback stays below, not in chat */ } };
+  return { appendAI(){ /* no-op: we keep quiz feedback separate */ } };
 }
