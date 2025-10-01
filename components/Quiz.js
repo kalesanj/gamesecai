@@ -114,10 +114,11 @@ export function mountQuiz(el, { onShowFeedback, onFinish }) {
       </div>
     `;
 
+    // Learning-only ask
     document.getElementById("askAI").onclick = () => {
-      const term = prompt('Ask AI to explain a term (e.g., "phishing", "MFA")');
-      if (!term) return;
-      window.dispatchEvent(new CustomEvent("ask-ai", { detail: { term } }));
+      const query = prompt('Ask the AI to explain anything (e.g., "What is phishing?", "Why are macros risky?")');
+      if (!query) return;
+      window.dispatchEvent(new CustomEvent("ask-ai", { detail: { query, context: q.text } }));
     };
 
     document.getElementById("submit").onclick = async () => {
