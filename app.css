@@ -2,8 +2,9 @@
 * { box-sizing:border-box; }
 body { margin:0; font-family:Inter,system-ui,Arial; background:var(--bg); color:var(--fg); }
 header { padding:16px 20px; border-bottom:1px solid var(--border); }
-main { display:grid; grid-template-columns: 1fr 320px; gap:16px; padding:20px; }
+main { display:grid; grid-template-columns: 1fr 340px; gap:16px; padding:20px; }
 #quiz, #chatbot, #results { background:#111827; border:1px solid var(--border); border-radius:12px; padding:16px; }
 button { background:var(--accent); color:#001018; border:none; padding:10px 14px; border-radius:8px; cursor:pointer; }
 button.ghost { background:transparent; color:var(--fg); border:1px solid var(--border); }
 .slider { width:100%; }
+input[type="text"], input[type="search"] { outline:none; }
