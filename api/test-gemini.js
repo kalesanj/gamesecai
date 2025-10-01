@@ -26,7 +26,6 @@ async function callGemini(apiKey, prompt, genCfg = {}) {
         if (text) return { text, model: m, version: ver };
       } else {
         lastErr = { status: r.status, details: raw.slice(0, 200), model: m, version: ver };
-        // keep trying others
       }
     }
   }
