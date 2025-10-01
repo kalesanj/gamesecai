@@ -80,26 +80,17 @@ export function mountQuiz(el, { onShowFeedback, onFinish }) {
   };
 
   function pickQuestion() {
-    let list = POOLS[state.pool];
-    if (!list || list.length === 0) list = POOLS.medium;
-    const q = list.find(x => !state.asked.has(x.id));
-    if (q) return q;
-    state.asked.clear();
-    return list[0];
+    let list = POOLS[state.pool] || POOLS.medium;
+    const q = list.find(x => !state.asked.has(x.id)) || list[0];
+    return q;
   }
-
   function adaptDifficulty({ correct, confidence }) {
-    if (correct && confidence >= 4) {
-      state.pool = state.pool === "easy" ? "medium" : "hard";
-    } else if (!correct || confidence <= 2) {
-      state.pool = state.pool === "hard" ? "medium" : "easy";
-    }
+    if (correct && confidence >= 4) state.pool = state.pool === "easy" ? "medium" : "hard";
+    else if (!correct || confidence <= 2) state.pool = state.pool === "hard" ? "medium" : "easy";
   }
 
   function renderQuestion(q) {
     state.startTs = now();
-    state.current = q;
-
     el.innerHTML = `
       <div>
         <div style="opacity:.7;margin-bottom:8px;">
@@ -143,24 +134,22 @@ export function mountQuiz(el, { onShowFeedback, onFinish }) {
       const payload = {
         question: q.text,
         selectedOptionText: q.options.find(o => o.id === selected.value).text,
-        correct,
-        confidence,
-        hesitationMs,
-        explanation: q.explanation
+        correct, confidence, hesitationMs, explanation: q.explanation
       };
-      const r = await fetch("/api/answer-feedback", {
-        method:"POST", headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify(payload)
-      });
-      const j = await r.json();
 
-      adaptDifficulty({ correct, confidence });
-
-      onShowFeedback({
-        correct,
-        feedback: j.text || "Good effort!",
-        next: state.answered < state.total
-      });
+      try {
+        const r = await fetch("/api/answer-feedback", {
+          method:"POST", headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify(payload)
+        });
+        const raw = await r.text();
+        let j; try { j = JSON.parse(raw); } catch { j = { text: raw }; }
+        const feedback = j.text || j.error || j.details || "Good effort!";
+        adaptDifficulty({ correct, confidence });
+        onShowFeedback({ correct, feedback, next: state.answered < state.total });
+      } catch {
+        onShowFeedback({ correct, feedback: "Network error. Please try again.", next: state.answered < state.total });
+      }
     };
   }
 
