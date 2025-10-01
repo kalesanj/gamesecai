@@ -1,4 +1,4 @@
-// /api/answer-feedback.js
+// /api/answer-feedback.js — Gemini if available, otherwise guaranteed local feedback
 export const config = { runtime: "nodejs" };
 
 function parseJSON(req) {
@@ -30,7 +30,9 @@ export default async function handler(req, res) {
     const ref = String(body.explanation || "");
 
     const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return res.status(200).json({ text: localFeedback({ correct, question, chosen, ref, confidence }), source:"local" });
+    if (!apiKey) {
+      return res.status(200).json({ text: localFeedback({ correct, question, chosen, ref, confidence }), source:"local" });
+    }
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
     const system = "Supportive cybersecurity tutor. Keep to 3–5 sentences. No operational hacking details.";
