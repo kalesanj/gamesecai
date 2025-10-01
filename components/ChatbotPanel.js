@@ -1,5 +1,6 @@
+// /components/ChatbotPanel.js
 export function mountChatbot(el) {
-  function ui(lines = []) {
+  function render(lines = []) {
     el.innerHTML = `
       <h3>AI Assistant</h3>
       <div style="display:flex;gap:8px;margin:8px 0;">
@@ -20,7 +21,7 @@ export function mountChatbot(el) {
   }
 
   let chat = [];
-  ui(chat);
+  render(chat);
 
   async function submitAsk() {
     const inp = document.getElementById("askInput");
@@ -28,63 +29,30 @@ export function mountChatbot(el) {
     if (!query) return;
     inp.value = "";
     chat.push({ role: "user", text: query });
-    ui(chat);
+    render(chat);
 
-    const ctx = window.__currentQuizQuestion || "";
-    const resp = await fetch("/api/learn-stream", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, context: ctx })
-    });
+    const context = window.__currentQuizQuestion || "";
 
-    // If streaming unavailable, try non-streaming endpoint
-    if (!resp.ok || !resp.body) {
+    try {
       const r = await fetch("/api/learn", {
         method: "POST",
-        headers: { "Content-Type":"application/json" },
-        body: JSON.stringify({ query, context: ctx })
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, context })
       });
-      const raw = await r.text(); let j; try{ j=JSON.parse(raw);}catch{ j={ error: raw }; }
-      chat.push({ role:"ai", text: j.text || j.error || "Gemini error", source: "gemini" });
-      return ui(chat);
-    }
+      const raw = await r.text();
+      let j; try { j = JSON.parse(raw); } catch { j = { error: raw }; }
 
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    chat.push({ role: "ai", text: "", source: "gemini" });
-    ui(chat);
-
-    let partial = "";
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      partial += decoder.decode(value, { stream: true });
-
-      // Our server sends SSE lines:  data: {"text":"..."}
-      const lines = partial.split("\n");
-      partial = lines.pop(); // keep last partial for next round
-
-      let appended = false;
-      for (const line of lines) {
-        const t = line.trim();
-        if (!t.startsWith("data:")) continue;
-        const payload = t.slice(5).trim();
-        if (!payload) continue;
-        try {
-          const obj = JSON.parse(payload);
-          const piece = obj.text || "";
-          if (piece) {
-            const last = chat[chat.length - 1];
-            last.text += piece;
-            appended = true;
-          }
-        } catch {/* ignore keep-alives */}
-      }
-      if (appended) ui(chat);
+      const text = j.text || j.error || j.details || "Gemini didn’t return text.";
+      const source = j.source || (j.error ? "gemini-error" : "gemini");
+      chat.push({ role: "ai", text, source });
+      render(chat);
+    } catch (e) {
+      chat.push({ role: "ai", text: `Network error: ${String(e)}`, source: "network" });
+      render(chat);
     }
   }
 
-  // Support the quiz's "Ask AI" button
+  // Support one-click “Ask AI” from the quiz
   window.addEventListener("ask-ai", (e) => {
     const q = (e.detail?.query || e.detail?.term || "").trim();
     if (!q) return;
