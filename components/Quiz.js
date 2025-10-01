@@ -1,3 +1,4 @@
+// /components/Quiz.js
 function now() { return performance.now(); }
 
 const POOLS = {
@@ -91,6 +92,8 @@ export function mountQuiz(el, { onShowFeedback, onFinish }) {
 
   function renderQuestion(q) {
     state.startTs = now();
+    window.__currentQuizQuestion = q.text; // share context with chat
+
     el.innerHTML = `
       <div>
         <div style="opacity:.7;margin-bottom:8px;">
@@ -114,7 +117,6 @@ export function mountQuiz(el, { onShowFeedback, onFinish }) {
       </div>
     `;
 
-    // Learning-only ask
     document.getElementById("askAI").onclick = () => {
       const query = prompt('Ask the AI to explain anything (e.g., "What is phishing?", "Why are macros risky?")');
       if (!query) return;
@@ -143,10 +145,11 @@ export function mountQuiz(el, { onShowFeedback, onFinish }) {
           method:"POST", headers:{ "Content-Type":"application/json" },
           body: JSON.stringify(payload)
         });
-        const raw = await r.text();
-        let j; try { j = JSON.parse(raw); } catch { j = { text: raw }; }
+        const bodyTxt = await r.text();
+        let j; try { j = JSON.parse(bodyTxt); } catch { j = { text: bodyTxt }; }
         const feedback = j.text || j.error || j.details || "Good effort!";
         adaptDifficulty({ correct, confidence });
+
         onShowFeedback({ correct, feedback, next: state.answered < state.total });
       } catch {
         onShowFeedback({ correct, feedback: "Network error. Please try again.", next: state.answered < state.total });
