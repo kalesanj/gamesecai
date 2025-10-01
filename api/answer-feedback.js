@@ -1,3 +1,4 @@
+// Always works: uses Gemini if present; otherwise generates safe template feedback.
 export const config = { runtime: "nodejs" };
 
 function parseJSON(req) {
@@ -11,53 +12,77 @@ function parseJSON(req) {
   });
 }
 
+// Simple safe feedback without AI
+function localFeedback({ correct, question, chosen, ref, confidence }) {
+  const intro = correct
+    ? "✅ Correct. Nice work—your choice aligns with standard best practice."
+    : "❌ Not quite. That choice isn’t safest for this situation.";
+  const explain = ref
+    ? ` Why: ${ref}`
+    : " Aim to pause, verify through official channels, and avoid interacting with suspicious links or attachments.";
+  const tip = ` Tip: If your confidence was ${confidence}/5, keep practicing with varied examples and report anything suspicious to IT/security.`;
+  return `${intro}${explain}${tip}`;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end("Method Not Allowed");
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: "Missing GEMINI_API_KEY" });
-
     const body = await parseJSON(req);
+    const correct = !!body.correct;
+    const confidence = Number(body.confidence ?? 3);
+    const question = String(body.question || "");
+    const chosen = String(body.selectedOptionText || "");
+    const ref = String(body.explanation || "");
 
-    const sanitize = (t="") =>
-      String(t).replace(/https?:\/\/\S+/g,"[link]").replace(/\S+@\S+/g,"[email]").slice(0,600);
+    const apiKey = process.env.GEMINI_API_KEY;
 
-    const { question, selectedOptionText, correct, confidence, hesitationMs, explanation } = body || {};
-    const system = "You are a helpful cybersecurity explainer. Give short, supportive feedback (3–6 sentences). Avoid operational hacking instructions.";
-    const userMsg = `
-Question: ${sanitize(question)}
-User's answer: ${sanitize(selectedOptionText)}
-Correct? ${correct ? "Yes" : "No"}
-Confidence (1-5): ${confidence}
-Hesitation ms: ${hesitationMs}
-Reference explanation (safe to cite): ${sanitize(explanation)}
-Provide feedback + one safe tip.
-`;
-    const prompt = `${system}\n\n${userMsg}`;
+    // If no key, answer locally (works offline)
+    if (!apiKey) {
+      return res.status(200).json({ text: localFeedback({ correct, question, chosen, ref, confidence }), source: "local" });
+    }
 
+    // Try Gemini with a short prompt
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+    const system = "Supportive cybersecurity tutor. Keep to 3–5 sentences. No operational hacking details.";
+    const prompt = `${system}
+
+Question: ${question}
+User answer: ${chosen}
+Correct: ${correct ? "Yes" : "No"}
+Confidence (1–5): ${confidence}
+Reference (safe): ${ref}
+
+Give brief feedback and one safe tip.`;
+
     const payload = {
       contents: [{ role: "user", parts: [{ text: prompt }]}],
-      generationConfig: { temperature: 0.4, maxOutputTokens: 220 }
+      generationConfig: { temperature: 0.35, maxOutputTokens: 180 }
     };
 
     const r = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-
     const raw = await r.text();
+
+    // Fallback gracefully on any provider problem
     if (!r.ok) {
-      console.error("answer-feedback fail:", r.status, raw.slice(0,200));
-      return res.status(500).json({ error: "Gemini request failed", status: r.status, details: raw.slice(0,200) });
+      return res.status(200).json({
+        text: localFeedback({ correct, question, chosen, ref, confidence }),
+        source: `local-fallback-${r.status}`
+      });
     }
 
     let j; try { j = JSON.parse(raw); } catch { j = {}; }
     const textOut = j?.candidates?.[0]?.content?.parts?.[0]?.text;
-    res.status(200).json({ text: textOut || "Good effort!" });
+    return res.status(200).json({
+      text: textOut || localFeedback({ correct, question, chosen, ref, confidence }),
+      source: "gemini"
+    });
   } catch (e) {
-    console.error("answer-feedback exception:", e);
-    res.status(500).json({ error: "Server error" });
+    return res.status(200).json({
+      text: localFeedback({ correct: false, question: "", chosen: "", ref: "", confidence: 3 }),
+      source: "local-error"
+    });
   }
 }
