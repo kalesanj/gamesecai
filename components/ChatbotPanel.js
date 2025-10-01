@@ -1,4 +1,3 @@
-// components/ChatbotPanel.js
 export function mountChatbot(el) {
   function render(lines = []) {
     el.innerHTML = `
@@ -8,64 +7,35 @@ export function mountChatbot(el) {
       </div>
     `;
   }
-
   let chat = [];
   render(chat);
 
   window.addEventListener("ask-ai", async (e) => {
     const term = (e.detail.term || "").trim();
     if (!term) return;
-
     chat.push({ role: "user", text: `What is "${term}"?` });
     render(chat);
 
-    // Browser-side cache (saves free API calls)
     try {
       const key = `def:${term.toLowerCase()}`;
       const cached = localStorage.getItem(key);
-      if (cached) {
-        chat.push({ role: "ai", text: cached });
-        return render(chat);
-      }
+      if (cached) { chat.push({ role: "ai", text: cached }); return render(chat); }
 
       const r = await fetch("/api/ask-definition", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ term })
       });
-
-      // Try to parse JSON; if not JSON, show raw text
-      let j, raw;
-      try {
-        raw = await r.text();
-        j = JSON.parse(raw);
-      } catch {
-        j = { error: raw || "Non-JSON response from server." };
-      }
-
-      // Show helpful message if backend returned an error
-      const msg =
-        (j && (j.text || j.error || j.details)) ||
-        (r.ok ? "I couldn't find a safe definition." : `Request failed (status ${r.status}).`);
-
-      // Cache only successful text responses
-      if (j && j.text) {
-        localStorage.setItem(key, j.text);
-      }
-
+      const raw = await r.text();
+      let j; try { j = JSON.parse(raw); } catch { j = { text: raw }; }
+      const msg = j.text || j.error || j.details || "I couldn't find a safe definition.";
+      if (j.text) localStorage.setItem(key, j.text);
       chat.push({ role: "ai", text: msg });
       render(chat);
     } catch (err) {
-      chat.push({ role: "ai", text: `Network error: ${String(err && err.message || err)}` });
+      chat.push({ role: "ai", text: "Network error. Please try again." });
       render(chat);
     }
   });
 
-  // API so other components can append messages
-  return {
-    appendAI(text) {
-      chat.push({ role: "ai", text });
-      render(chat);
-    }
-  };
+  return { appendAI(text){ chat.push({role:"ai", text}); render(chat); } };
 }
