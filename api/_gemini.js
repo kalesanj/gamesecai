@@ -1,7 +1,7 @@
 export const config = { runtime: "nodejs" };
 
-// Simple in-memory cache (10 minutes)
-const CACHE_TTL_MS = 10 * 60 * 1000;
+// Cache discovered model/version for 60 minutes
+const CACHE_TTL_MS = 60 * 60 * 1000;
 let cache = { model: null, version: null, ts: 0 };
 
 async function listModels(apiKey, version) {
@@ -14,45 +14,43 @@ async function listModels(apiKey, version) {
 }
 
 function choose(models) {
-  // Prefer flash → pro, newest first
-  const byPref = (name) => (
+  // Prefer fast models (flash) then pro; newest first
+  const allow = (name) =>
     name.includes("gemini") &&
-    !name.includes("vision") && (
-      name.includes("1.5-flash") ||
-      name.includes("1.5-pro") ||
-      name.includes("1.0-pro") ||
-      name.includes("pro") ||
-      name.includes("flash")
-    )
-  );
-  const sorted = models.map(m => m.name || "").filter(byPref).sort((a, b) => b.localeCompare(a));
+    !name.includes("vision") &&
+    (name.includes("1.5-flash") || name.includes("flash") || name.includes("1.5-pro") || name.includes("1.0-pro") || name.includes("pro"));
+
+  const sorted = models
+    .map(m => m.name || "")
+    .filter(allow)
+    .map(n => n.replace(/^models\//, ""))
+    .sort((a, b) => b.localeCompare(a)); // simple "newest-ish" sort by name
   return sorted[0] || null;
 }
 
-// Discover a usable (version, model) for this key
 export async function discoverModel(apiKey) {
   const now = Date.now();
   if (cache.model && now - cache.ts < CACHE_TTL_MS) return { version: cache.version, model: cache.model };
 
-  const versions = ["v1", "v1beta"];
-  for (const version of versions) {
+  for (const version of ["v1", "v1beta"]) {
     try {
       const models = await listModels(apiKey, version);
       const pick = choose(models);
       if (pick) {
-        cache = { model: pick.replace(/^models\//, ""), version, ts: now };
-        return { version: cache.version, model: cache.model };
+        cache = { model: pick, version, ts: now };
+        return { version, model: pick };
       }
     } catch { /* try next */ }
   }
   throw new Error("No compatible Gemini model available for this key.");
 }
 
+// Non-streaming (for simple checks)
 export async function generate(apiKey, { version, model }, prompt, genCfg = {}) {
   const url = `https://generativelanguage.googleapis.com/${version}/models/${model}:generateContent?key=${apiKey}`;
   const payload = {
     contents: [{ role: "user", parts: [{ text: prompt }]}],
-    generationConfig: { temperature: 0.3, maxOutputTokens: 220, ...genCfg }
+    generationConfig: { temperature: 0.2, maxOutputTokens: 140, ...genCfg }
   };
   const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
   const raw = await r.text();
